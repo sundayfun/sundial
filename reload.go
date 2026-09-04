@@ -6,8 +6,8 @@ import (
 )
 
 // Reload replaces the in-memory state when the Provider content changed.
-func (s *Sundial[T]) Reload(ctx context.Context) error {
-	changed, err := s.reload(ctx)
+func (s *Client[T]) Reload(ctx context.Context) error {
+	_, changed, err := s.reload(ctx)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) {
 			s.logger.ErrorContext(ctx, "reload configuration", "error", err)
@@ -21,22 +21,22 @@ func (s *Sundial[T]) Reload(ctx context.Context) error {
 	return nil
 }
 
-func (s *Sundial[T]) reload(ctx context.Context) (bool, error) {
+func (s *Client[T]) reload(ctx context.Context) (Entry[T], bool, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 
-	next, err := s.loadSnapshot(ctx)
+	next, entry, err := s.loadSnapshot(ctx)
 	if err != nil {
-		return false, err
+		return Entry[T]{}, false, err
 	}
 	current := s.snapshot.Load()
 	if next.hash == current.hash {
 		if next.metadata.Revision != current.metadata.Revision {
 			s.snapshot.Store(next)
 		}
-		return false, nil
+		return entry, false, nil
 	}
 
 	s.snapshot.Store(next)
-	return true, nil
+	return entry, true, nil
 }

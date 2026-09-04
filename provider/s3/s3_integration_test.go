@@ -35,7 +35,7 @@ func TestIntegrationS3Provider(t *testing.T) {
 
 	factory := newMinIOTestFactory(t, t.Context())
 
-	t.Run("new creates Sundial instance", func(t *testing.T) {
+	t.Run("new creates Client", func(t *testing.T) {
 		t.Parallel()
 
 		ctx, fixture := newIntegrationFixture(t, factory, minIOFixtureConfig{

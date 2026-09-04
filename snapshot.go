@@ -17,16 +17,21 @@ type snapshot struct {
 	metadata Metadata
 }
 
-func decodeSnapshot[T any](documentCodec codec.Codec, data []byte, metadata Metadata) (*snapshot, error) {
-	if _, err := decodeConfig[T](documentCodec, data); err != nil {
-		return nil, fmt.Errorf("sundial: decode configuration: %w", err)
+func decodeSnapshot[T any](
+	documentCodec codec.Codec,
+	data []byte,
+	metadata Metadata,
+) (*snapshot, T, error) {
+	config, err := decodeConfig[T](documentCodec, data)
+	if err != nil {
+		return nil, config, fmt.Errorf("sundial: decode configuration: %w", err)
 	}
 
 	return &snapshot{
 		data:     cloneBytes(data),
 		hash:     sha256.Sum256(data),
 		metadata: metadata,
-	}, nil
+	}, config, nil
 }
 
 func decodeConfig[T any](documentCodec codec.Codec, data []byte) (T, error) {

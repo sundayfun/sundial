@@ -13,7 +13,7 @@ in-memory reads, persistent writes, and live updates.
 - **Live updates** — automatic reload keeps memory synchronized with external changes.
 - **Extensible storage and formats** — storage sources implement `Provider`; JSON works by default and other formats use codecs.
 
-One Sundial instance manages one complete configuration document.
+One `Client` manages one complete configuration document.
 
 ## Installation
 
@@ -70,7 +70,8 @@ Modify the value and pass the same `Entry` back for a conditional write:
 
 ```go
 entry.Value.Server.Port = 9090
-if err := configStore.Put(ctx, entry); err != nil {
+entry, err = configStore.Put(ctx, entry)
+if err != nil {
 	if sundial.IsConflict(err) {
 		// Reload, reapply the change, and retry if appropriate.
 		log.Print("configuration changed before it could be saved")
@@ -80,8 +81,9 @@ if err := configStore.Put(ctx, entry); err != nil {
 }
 ```
 
-`Put` uses the revision in `entry.Metadata`; a stale revision returns
-`ErrConflict`. It does not merge or retry automatically.
+`Put` uses the revision in `entry.Metadata` and returns the codec-decoded saved
+`Entry` with its new revision. A stale revision returns `ErrConflict`. It does
+not merge or retry automatically.
 
 JSON is used by default. Other formats can be configured with `WithCodec`.
 Storage implementations live under `provider/<source>`.
@@ -99,6 +101,8 @@ See the runnable [S3 example](examples/s3).
 - An empty or whitespace-only document causes `New`, `Put`, or `Reload` to return a decode error.
 - A failed or conflicting `Put` leaves the current in-memory snapshot unchanged.
 - A failed reload keeps the last valid snapshot.
+- `WithOnChange` receives the newly published `Entry`; `WithOnError` receives
+  automatic reload errors.
 - Canceling the context passed to `New` stops automatic reload.
 - `Get` is safe for concurrent use. `Put` calls are serialized per instance,
   and stale revisions return `ErrConflict`.

@@ -70,8 +70,8 @@ var (
 func New[T any](
 	ctx context.Context,
 	cfg *Config,
-	opts ...sundial.Option,
-) (*sundial.Sundial[T], error) {
+	opts ...sundial.Option[T],
+) (*sundial.Client[T], error) {
 	provider, err := NewProvider(ctx, cfg)
 	if err != nil {
 		return nil, err

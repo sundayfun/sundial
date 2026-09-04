@@ -48,11 +48,11 @@ func run() error {
 			WatchInterval: 0,
 		},
 		// Optional: called after a changed configuration is reloaded.
-		sundial.WithOnChange(func() {
-			log.Print("configuration reloaded")
+		sundial.WithOnChange(func(entry sundial.Entry[config]) {
+			printEntry("reloaded", entry)
 		}),
 		// Optional: called when automatic reload fails.
-		sundial.WithOnError(func(reloadErr error) {
+		sundial.WithOnError[config](func(reloadErr error) {
 			log.Printf("reload configuration: %v", reloadErr)
 		}),
 	)
@@ -68,19 +68,14 @@ func run() error {
 
 	if *port >= 0 {
 		entry.Value.Server.Port = *port
-		putErr := store.Put(ctx, entry)
+		updatedEntry, putErr := store.Put(ctx, entry)
 		if putErr != nil {
 			if sundial.IsConflict(putErr) {
 				return errors.New("configuration changed before it could be saved")
 			}
 			return fmt.Errorf("put configuration: %w", putErr)
 		}
-
-		entry, err = store.Get()
-		if err != nil {
-			return fmt.Errorf("get updated configuration: %w", err)
-		}
-		printEntry("updated", entry)
+		printEntry("updated", updatedEntry)
 	}
 
 	return nil
