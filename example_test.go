@@ -22,16 +22,13 @@ func ExampleNew() {
 	if err != nil {
 		panic(err)
 	}
-	entry, err := client.Get()
-	if err != nil {
-		panic(err)
-	}
+	entry := client.Get()
 	fmt.Println(entry.Value.Port)
 
 	// Output: 8080
 }
 
-func ExampleClient_Put() {
+func ExampleClient_Update_port() {
 	type Config struct {
 		Port int `json:"port"`
 	}
@@ -44,21 +41,15 @@ func ExampleClient_Put() {
 	if err != nil {
 		panic(err)
 	}
-	entry, err := client.Get()
+	entry := client.Get()
+	saved, err := client.Update(ctx, func(config *Config) error {
+		config.Port = 9090
+		return nil
+	})
 	if err != nil {
 		panic(err)
 	}
-
-	// Keep the observed revision while changing the complete document's value.
-	entry.Value.Port = 9090
-	saved, err := client.Put(ctx, entry)
-	if err != nil {
-		panic(err)
-	}
-	current, err := client.Get()
-	if err != nil {
-		panic(err)
-	}
+	current := client.Get()
 	fmt.Println(saved.Value.Port)
 	fmt.Println(saved.Revision.ID != entry.Revision.ID)
 	fmt.Println(current.Revision.ID == saved.Revision.ID)
@@ -69,7 +60,7 @@ func ExampleClient_Put() {
 	// true
 }
 
-func ExampleClient_Put_conflict() {
+func ExampleClient_Update_conflict() {
 	type Config struct {
 		Port int `json:"port"`
 	}
@@ -82,27 +73,58 @@ func ExampleClient_Put_conflict() {
 	if err != nil {
 		panic(err)
 	}
-	entry, err := client.Get()
+	staleClient, err := sundial.New[Config](ctx, provider)
 	if err != nil {
 		panic(err)
 	}
-	stale := entry
-	entry.Value.Port = 9090
-	if _, err = client.Put(ctx, entry); err != nil {
+	// Stop automatic reloads so the second client keeps the original snapshot.
+	cancel()
+	writeCtx := context.Background()
+	if _, err = client.Update(writeCtx, func(config *Config) error {
+		config.Port = 9090
+		return nil
+	}); err != nil {
 		panic(err)
 	}
 
-	// A second write based on the old revision must not overwrite the first.
-	stale.Value.Port = 7070
-	_, err = client.Put(ctx, stale)
+	// A write based on the second client's stale snapshot cannot overwrite it.
+	_, err = staleClient.Update(writeCtx, func(config *Config) error {
+		config.Port = 7070
+		return nil
+	})
 	fmt.Println(sundial.IsConflict(err))
-	current, err := client.Get()
-	if err != nil {
-		panic(err)
-	}
+	current := client.Get()
 	fmt.Println(current.Value.Port)
 
 	// Output:
 	// true
 	// 9090
+}
+
+func ExampleClient_Update() {
+	type Config struct {
+		Labels map[string]string `json:"labels"`
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	provider := providertesting.New([]byte(`{"labels":{"region":"east"}}`))
+	client, err := sundial.New[Config](ctx, provider)
+	if err != nil {
+		panic(err)
+	}
+
+	// Edit an independent draft without first calling Get.
+	saved, err := client.Update(ctx, func(config *Config) error {
+		config.Labels["region"] = "west"
+		return nil
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(saved.Value.Labels["region"])
+	fmt.Println(client.Get().Value.Labels["region"])
+
+	// Output:
+	// west
+	// west
 }

@@ -482,10 +482,7 @@ func TestClientRevisionOperations(t *testing.T) {
 	client, err := sundial.New[typedConfig](t.Context(), provider)
 	require.NoError(t, err)
 
-	entry, err := client.Get()
-	require.NoError(t, err)
-	entry.Value.Port = 9090
-	_, err = client.Put(t.Context(), entry)
+	_, err = client.Update(t.Context(), func(config *typedConfig) error { config.Port = 9090; return nil })
 	require.NoError(t, err)
 	revisions, err := client.ListRevisions(t.Context(), sundial.ListRevisionsOptions{})
 	require.NoError(t, err)
@@ -521,7 +518,10 @@ func TestClientRestoreRejectsUndecodableHistoryBeforeWriting(t *testing.T) {
 			goodData := []byte(`{"port":8080}`)
 			good, err := provider.Put(t.Context(), goodData)
 			require.NoError(t, err)
-			client, err := sundial.New[typedConfig](t.Context(), provider)
+			client, err := sundial.New[typedConfig](
+				t.Context(),
+				provider,
+			)
 			require.NoError(t, err)
 			storage, ok := provider.client.(*testClient)
 			require.True(t, ok)
@@ -535,8 +535,7 @@ func TestClientRestoreRejectsUndecodableHistoryBeforeWriting(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, goodData, data)
 			assert.Equal(t, good, revision)
-			local, err := client.Get()
-			require.NoError(t, err)
+			local := client.Get()
 			assert.Equal(t, good, local.Revision)
 			assert.Equal(t, 8080, local.Value.Port)
 			storage.mu.Lock()
@@ -563,8 +562,7 @@ func TestClientRestoreConflictPreservesSnapshot(t *testing.T) {
 	_, revision, err := provider.Get(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, good, revision)
-	local, err := client.Get()
-	require.NoError(t, err)
+	local := client.Get()
 	assert.Equal(t, good, local.Revision)
 	assert.Equal(t, 9090, local.Value.Port)
 }
@@ -598,7 +596,11 @@ func TestYAMLStorageLayoutAndServiceIsolation(t *testing.T) {
 	require.NoError(t, err)
 	second, err := im.PutIfRevision(t.Context(), []byte("server:\n  port: 9090\n"), first.ID)
 	require.NoError(t, err)
-	store, err := sundial.New[map[string]any](t.Context(), im, sundial.WithCodec[map[string]any](yamlcodec.New()))
+	type config struct {
+		Server typedConfig `yaml:"server"`
+	}
+	store, err := sundial.New[config](t.Context(), im,
+		sundial.WithCodec[config](yamlcodec.New()))
 	require.NoError(t, err)
 	restoredEntry, err := store.RestoreRevision(t.Context(), first.ID, second.ID)
 	require.NoError(t, err)
@@ -651,12 +653,14 @@ func TestClientRestoresOriginalYAML(t *testing.T) {
 	original := []byte("# preserve formatting and unknown fields\nport: 8080\nunknown: keep\n")
 	first, err := provider.Put(t.Context(), original)
 	require.NoError(t, err)
-	client, err := sundial.New[typedConfig](t.Context(), provider, sundial.WithCodec[typedConfig](yamlcodec.New()))
+	client, err := sundial.New[typedConfig](
+		t.Context(),
+		provider,
+
+		sundial.WithCodec[typedConfig](yamlcodec.New()),
+	)
 	require.NoError(t, err)
-	entry, err := client.Get()
-	require.NoError(t, err)
-	entry.Value.Port = 9090
-	second, err := client.Put(t.Context(), entry)
+	second, err := client.Update(t.Context(), func(config *typedConfig) error { config.Port = 9090; return nil })
 	require.NoError(t, err)
 	restored, err := client.RestoreRevision(t.Context(), first.ID, second.Revision.ID)
 	require.NoError(t, err)
@@ -690,7 +694,12 @@ func TestSameContentCreatesDistinctRevisions(t *testing.T) {
 	require.NoError(t, err)
 	second, err := provider.PutIfRevision(t.Context(), data, first.ID)
 	require.NoError(t, err)
-	store, err := sundial.New[typedConfig](t.Context(), provider, sundial.WithCodec[typedConfig](yamlcodec.New()))
+	store, err := sundial.New[typedConfig](
+		t.Context(),
+		provider,
+
+		sundial.WithCodec[typedConfig](yamlcodec.New()),
+	)
 	require.NoError(t, err)
 	restored, err := store.RestoreRevision(t.Context(), first.ID, second.ID)
 	third := restored.Revision
@@ -709,4 +718,45 @@ func TestSameContentCreatesDistinctRevisions(t *testing.T) {
 	history, err := provider.ListRevisions(t.Context(), sundial.ListRevisionsOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, []sundial.Revision{third, second, first}, history)
+}
+
+func TestClientRestoreReturnsReadOnlySnapshot(t *testing.T) {
+	t.Parallel()
+	type config struct {
+		Port int      `yaml:"port"`
+		Tags []string `yaml:"tags"`
+	}
+	provider := newVersionedTestProvider()
+	original := []byte("# keep comments and unknown fields\nport: 8080\ntags: [api]\nunknown: keep\n")
+	good, err := provider.Put(t.Context(), original)
+	require.NoError(t, err)
+	store, err := sundial.New[config](
+		t.Context(),
+		provider,
+
+		sundial.WithCodec[config](yamlcodec.New()),
+	)
+	require.NoError(t, err)
+	saved, err := store.Update(t.Context(), func(draft *config) error { draft.Port = 9090; return nil })
+	require.NoError(t, err)
+	restored, err := store.RestoreRevision(t.Context(), good.ID, saved.Revision.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 8080, restored.Value.Port)
+	assert.Equal(t, saved.Revision.ID, restored.Revision.ParentID)
+	assert.Equal(t, restored, store.Get())
+	assert.Equal(t, &restored.Value.Tags[0], &store.Get().Value.Tags[0])
+	assert.Equal(t, []string{"api"}, store.Get().Value.Tags)
+	data, current, err := provider.Get(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, original, data)
+	assert.Equal(t, restored.Revision, current)
+	updated, err := store.Update(t.Context(), func(draft *config) error {
+		assert.Equal(t, 8080, draft.Port)
+		assert.Equal(t, []string{"api"}, draft.Tags)
+		draft.Port++
+		return nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 8081, updated.Value.Port)
+	assert.Equal(t, restored.Revision.ID, updated.Revision.ParentID)
 }

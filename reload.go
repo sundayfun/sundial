@@ -22,22 +22,22 @@ func (s *Client[T]) Reload(ctx context.Context) error {
 	return nil
 }
 
-func (s *Client[T]) reload(ctx context.Context) (Entry[T], bool, error) {
+func (s *Client[T]) reload(ctx context.Context) (*snapshot[T], bool, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 
-	next, entry, err := s.loadSnapshot(ctx)
+	next, err := s.loadSnapshot(ctx)
 	if err != nil {
-		return Entry[T]{}, false, err
+		return nil, false, err
 	}
 	current := s.snapshot.Load()
 	if next.hash == current.hash {
 		if next.revision.ID != current.revision.ID {
 			s.snapshot.Store(next)
 		}
-		return entry, false, nil
+		return next, false, nil
 	}
 
 	s.snapshot.Store(next)
-	return entry, true, nil
+	return next, true, nil
 }

@@ -10,8 +10,8 @@ in-memory reads, persistent writes, and live updates.
 ## Why Sundial
 
 - **Type-safe access** — applications read their own configuration struct instead of string paths and `any` values.
-- **Fast reads** — `Get` reads only from an in-memory snapshot.
-- **Persistent writes** — `Put` conditionally saves one complete typed configuration document.
+- **Fast reads** — `Get` returns the already parsed in-memory snapshot without decoding or deep copying.
+- **Persistent writes** — `Update` conditionally saves one complete typed configuration document.
 - **Version history** — browse historical revisions and restore configuration.
 - **Live updates** — automatic reload keeps memory synchronized with external changes.
 - **Extensible storage and formats** — storage sources implement `Provider`; JSON works by default and other formats use codecs.
@@ -22,7 +22,7 @@ One `Client` manages one complete configuration document.
 
 ![Sundial in-memory reads, concurrent write protection, and revision restore](docs/images/sundial-overview.png)
 
-If two callers read revision A, the first successful write creates B; the second
+If two clients cache revision A, the first successful update creates B; the second
 write based on A returns `ErrConflict`. Later, restoring A while C is current
 creates a new revision D with A's content, preserving the full history.
 
@@ -68,21 +68,45 @@ func main() {
         log.Fatal(err)
     }
 
-    entry, err := store.Get()
-    if err != nil {
-        log.Fatal(err)
-    }
+    entry := store.Get()
     fmt.Println(entry.Value.Port)
 
-    entry.Value.Port = 9090
-    if _, err := store.Put(ctx, entry); err != nil {
+    if _, err := store.Update(ctx, func(config *Config) error {
+        config.Port = 9090
+        return nil
+    }); err != nil {
         log.Fatal(err)
     }
 }
 ```
 
-`Get` returns an independent copy with its revision. `Put` saves the complete document;
-a stale revision returns `ErrConflict`, without automatic merging or retries.
+`Get` returns a shared read-only configuration snapshot with its revision, without
+an error return, encoding, decoding or deep copying. Do not modify its value,
+including nested maps, slices and pointers. Go does not enforce this read-only
+contract; callers must follow it. Successful `Update` and `RestoreRevision` results and values
+passed to `OnChange` have the same shared read-only contract.
+
+For ordinary edits, call `Update(ctx, func(*T) error)` directly; no preceding `Get`
+is needed. This is the client's only ordinary write interface. Internally, it
+decodes the cached source document into an independent draft, applies the
+callback, then encodes and decodes the result to validate it and isolate the
+stored snapshot before publishing with revision protection. Each update uses
+one encode and two decodes; the snapshot retains the source document.
+Any encoding, decoding, callback or publication failure leaves the cached
+snapshot unchanged. The returned entry is shared read-only. Do not modify the
+callback's draft concurrently with the call. The callback must not call `Update`,
+`Reload` or `RestoreRevision` on the same client because they acquire the same
+write lock.
+
+`New(ctx, provider, opts...)` needs no clone function from the caller. The internal
+draft reparses the cached document using the codec; a codec that injects dynamic
+values may produce a draft different from the already parsed snapshot. Each codec
+`Decode` call must create independent mutable objects, without retaining or
+reusing their references; `Encode` must not modify its input.
+
+`Update` saves the complete document using compare-and-swap (CAS) against the
+cached snapshot's revision. If another client publishes a new revision first,
+the stale write returns `ErrConflict`, without automatic merging or retries.
 Canceling the context stops automatic reload.
 Failed writes or reloads leave the last valid in-memory configuration unchanged.
 

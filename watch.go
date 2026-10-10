@@ -76,7 +76,7 @@ func (s *Client[T]) poll(ctx context.Context, opts reloadOptions[T]) {
 }
 
 func (s *Client[T]) autoReload(ctx context.Context, opts reloadOptions[T]) error {
-	entry, changed, err := s.reload(ctx)
+	next, changed, err := s.reload(ctx)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return err
@@ -95,7 +95,7 @@ func (s *Client[T]) autoReload(ctx context.Context, opts reloadOptions[T]) error
 		return err
 	}
 	if changed && opts.OnChange != nil {
-		opts.OnChange(entry)
+		opts.OnChange(s.entry(next))
 	}
 	if changed {
 		current := s.snapshot.Load()

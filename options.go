@@ -40,6 +40,7 @@ func WithLogger[T any](logger *slog.Logger) Option[T] {
 }
 
 // WithOnChange sets the callback run after automatic reload publishes a changed configuration.
+// The callback receives a shared read-only Entry and must not modify its references.
 func WithOnChange[T any](callback func(Entry[T])) Option[T] {
 	return func(opts *options[T]) {
 		opts.Reload.OnChange = callback
