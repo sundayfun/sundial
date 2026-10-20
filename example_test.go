@@ -13,8 +13,7 @@ func ExampleNew() {
 		Port int `json:"port"`
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel() // Stop automatic reloads when the client is no longer needed.
+	ctx := context.Background()
 
 	// Use an in-memory test provider with an existing JSON document.
 	provider := providertesting.New([]byte(`{"port":8080}`))
@@ -22,6 +21,7 @@ func ExampleNew() {
 	if err != nil {
 		panic(err)
 	}
+	defer client.Close()
 	fmt.Println(client.Get().Port)
 
 	// Output: 8080

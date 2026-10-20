@@ -1,5 +1,5 @@
 project-root := `git rev-parse --show-toplevel`
-golangci-lint-version := "v2.13.0"
+golangci-lint-version := "v2.14.0"
 golangci-lint-package := "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@" + golangci-lint-version
 golangci-lint-dir := project-root / "bin" / ("golangci-lint-" + golangci-lint-version)
 golangci-lint := golangci-lint-dir / "golangci-lint"

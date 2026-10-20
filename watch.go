@@ -78,7 +78,7 @@ func (s *Client[T]) poll(ctx context.Context, opts reloadOptions[T]) {
 func (s *Client[T]) autoReload(ctx context.Context, opts reloadOptions[T]) error {
 	next, changed, err := s.reload(ctx)
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
+		if errors.Is(err, context.Canceled) || errors.Is(err, ErrClosed) {
 			return err
 		}
 		s.logger.ErrorContext(

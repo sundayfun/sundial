@@ -3,6 +3,8 @@ package sundial
 import "errors"
 
 var (
+	// ErrClosed reports an operation on a closed Client.
+	ErrClosed = errors.New("sundial: client closed")
 	// ErrNotFound reports a missing configuration document.
 	ErrNotFound = errors.New("sundial: not found")
 	// ErrConflict reports a failed write condition, including an empty or stale revision ID.

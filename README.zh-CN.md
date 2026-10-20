@@ -156,3 +156,11 @@ Provider 不访问外部存储。Watcher 通知一次后等待 context 取消，
 ## 许可证
 
 [MIT](LICENSE)
+
+### 关闭后的读取
+
+`Close()` 停止自动刷新并等待 watcher 退出。关闭后，`Get()` 和 `GetEntry()`
+仍返回最新保留的快照，每次调用都会记录包含 `ErrClosed` 的 Warn 日志；
+不返回 error，也不会 panic。该快照不再自动刷新，关闭前已经开始的操作仍可能完成。
+`Update`、`Reload`、`GetRevision`、`ListRevisions` 和 `RestoreRevision`
+在关闭后返回 `ErrClosed`。Provider 不受 Client 关闭影响。

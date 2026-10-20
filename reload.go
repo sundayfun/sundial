@@ -7,6 +7,7 @@ import (
 
 // Reload updates the in-memory content and revision from the Provider.
 // On error, the previous snapshot is preserved.
+// Reload returns ErrClosed after Close.
 func (s *Client[T]) Reload(ctx context.Context) error {
 	_, changed, err := s.reload(ctx)
 	if err != nil {
@@ -25,6 +26,9 @@ func (s *Client[T]) Reload(ctx context.Context) error {
 func (s *Client[T]) reload(ctx context.Context) (*snapshot[T], bool, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
+	if s.closed.Load() {
+		return nil, false, ErrClosed
+	}
 
 	next, err := s.loadSnapshot(ctx)
 	if err != nil {

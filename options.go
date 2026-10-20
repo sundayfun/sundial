@@ -41,6 +41,7 @@ func WithLogger[T any](logger *slog.Logger) Option[T] {
 
 // WithOnChange sets the callback run after automatic reload publishes a changed configuration.
 // The callback receives a shared read-only Entry and must not modify its references.
+// It runs on the watcher goroutine and must not call Client.Close synchronously.
 func WithOnChange[T any](callback func(Entry[T])) Option[T] {
 	return func(opts *options[T]) {
 		opts.Reload.OnChange = callback
@@ -48,6 +49,7 @@ func WithOnChange[T any](callback func(Entry[T])) Option[T] {
 }
 
 // WithOnError sets the automatic reload error callback.
+// It runs on the watcher goroutine and must not call Client.Close synchronously.
 func WithOnError[T any](callback func(error)) Option[T] {
 	return func(opts *options[T]) {
 		opts.Reload.OnError = callback

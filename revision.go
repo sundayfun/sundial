@@ -6,8 +6,12 @@ import (
 )
 
 // GetRevision returns a detached historical configuration value and its revision.
+// It returns ErrClosed after Close.
 func (s *Client[T]) GetRevision(ctx context.Context, revisionID string) (T, Revision, error) {
 	var zero T
+	if s.closed.Load() {
+		return zero, Revision{}, ErrClosed
+	}
 	provider, ok := s.provider.(RevisionManager)
 	if !ok {
 		return zero, Revision{}, ErrUnsupported
@@ -24,10 +28,14 @@ func (s *Client[T]) GetRevision(ctx context.Context, revisionID string) (T, Revi
 }
 
 // ListRevisions returns immutable revisions in newest-first order.
+// It returns ErrClosed after Close.
 func (s *Client[T]) ListRevisions(
 	ctx context.Context,
 	opts ListRevisionsOptions,
 ) ([]Revision, error) {
+	if s.closed.Load() {
+		return nil, ErrClosed
+	}
 	provider, ok := s.provider.(RevisionManager)
 	if !ok {
 		return nil, ErrUnsupported
@@ -50,11 +58,15 @@ func (s *Client[T]) ListRevisions(
 // an empty or stale ID returns ErrConflict.
 // It decodes the historical content before writing and preserves its original bytes.
 // The returned Entry is shared and read-only.
+// RestoreRevision returns ErrClosed after Close.
 func (s *Client[T]) RestoreRevision(
 	ctx context.Context,
 	targetRevisionID string,
 	currentRevisionID string,
 ) (Entry[T], error) {
+	if s.closed.Load() {
+		return Entry[T]{}, ErrClosed
+	}
 	provider, ok := s.provider.(RevisionManager)
 	if !ok {
 		return Entry[T]{}, ErrUnsupported
@@ -76,6 +88,9 @@ func (s *Client[T]) RestoreRevision(
 	// Serialize publication and the snapshot update; history reads need no lock.
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
+	if s.closed.Load() {
+		return Entry[T]{}, ErrClosed
+	}
 	revision, err := s.provider.PutIfRevision(ctx, data, currentRevisionID)
 	if err != nil {
 		return Entry[T]{}, fmt.Errorf("sundial: restore revision: %w", err)
